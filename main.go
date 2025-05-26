@@ -2,38 +2,35 @@ package main
 
 import (
 	"log"
-	"os"
+	"notification_telegram_bot/bot"
+	"notification_telegram_bot/config"
+	"notification_telegram_bot/db"
+	"notification_telegram_bot/repository"
+	"notification_telegram_bot/service"
 
-	"github.com/joho/godotenv"
 	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 func main() {
-	err := godotenv.Load(".env")
-
+	cfg, err := config.LoadConfig()
+	
 	if err != nil {
-		panic("Error loading .env file: " + err.Error())
+		log.Fatalf("Error loading config: %v", err)
 	}
 
-	token := os.Getenv("API_TOKEN")
-	bot, err := tgbotapi.NewBotAPI(token)
+	botAPI, err := tgbotapi.NewBotAPI(cfg.TelegramToken)
+	db := db.Connect(cfg.DatabaseURL)
+
+	repository := repository.NewUserRepository(db)
+	userService := service.NewUserService(*repository)
 	
 	if err != nil {
 		log.Panic(err)
 	}
 
-	log.Printf("Authorized on account %s", bot.Self.UserName)
+	botHandler := bot.NewBotHandler(botAPI, userService)
 
-	u := tgbotapi.NewUpdate(0)
-    u.Timeout = 60
-    updates := bot.GetUpdatesChan(u)
+	log.Printf("Authorized on account %s", botAPI.Self.UserName)
 
-	for update := range updates {
-        if update.Message != nil {
-            log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
-
-            msg := tgbotapi.NewMessage(update.Message.Chat.ID, update.Message.Text)
-            bot.Send(msg)
-        }
-    }
+	botHandler.Start()
 }
